@@ -2,4 +2,4 @@
 - 
 - 📫 How to reach me ... My telegram ID is @SAhmadRezaA
 
-I’m Intrested in collaborate with others and learn from them
+I’m Intrested in collaborating with others and learn from them
