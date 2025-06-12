@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+        <head>
+                        <meta charset="utf-8" />
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                        <meta name="generator" content="Pelican" />
+                        <title>The Ahmadreza Chronicles</title>
+                        <link rel="stylesheet" href="/theme/css/main.css" />
+                                <link href="/feeds/all.atom.xml" type="application/atom+xml" rel="alternate" title="The Ahmadreza Chronicles Atom Feed" />
+        </head>
+
+        <body id="index" class="home">
+                <header id="banner" class="body">
+                        <h1><a href="/">The Ahmadreza Chronicles</a></h1>
+                        <nav><ul>
+                                                <li><a href="/category/artificial-intelligence.html">artificial intelligence</a></li>
+                                                <li><a href="/category/etymology.html">etymology</a></li>
+                        </ul></nav>
+                </header><!-- /#banner -->
+
+                <aside id="featured" class="body">
+                    <article>
+                        <h1 class="entry-title"><a href="/building-resnet-in-pytorch-a-step-by-step-guide-for-cifar-10-image-classification.html">Building ResNet in PyTorch: A Step-by-Step Guide for CIFAR-10 Image Classification</a></h1>
+<footer class="post-info">
+        <abbr class="published" title="2025-06-05T00:00:00+03:30">
+                Published: Thu 05 June 2025
+        </abbr>
+
+                <address class="vcard author">
+                        By                                 <a class="url fn" href="/author/s-ahmadreza-anaami.html">S. Ahmadreza Anaami</a>
+                </address>
+        <p>In <a href="/category/artificial-intelligence.html">artificial intelligence</a>.</p>
+<p>tags: <a href="/tag/artificial-intelligence.html">artificial intelligence</a> <a href="/tag/deep-learning.html">deep learning</a> <a href="/tag/computer-vision.html">Computer vision</a> <a href="/tag/resnet.html">ResNet</a> <a href="/tag/pytorch.html">pytorch</a> <a href="/tag/python.html">python</a> </p>        
+</footer><!-- /.post-info --><p>Hey everyone, Ahmadreza Anaami here! 👋</p>
+<p>I've been diving deep into the world of Deep Neural Networks, and one architecture that always stands out is ResNet. It was a game-changer for training incredibly deep networks, and I wanted to share my journey implementing it in PyTorch, specifically for the CIFAR-10 dataset. This post is a bit of a summary to solidify my own understanding and hopefully help anyone else curious about ResNets.</p>
+<h2>So, What's ResNet All About? 🤔</h2>
+<p>As we started building deeper and deeper neural networks, a peculiar problem emerged: <strong>degradation</strong>. It's not your typical overfitting. With degradation, as you add more layers to a "plain" deep network, the training error <em>increases</em>. This sounds counter-intuitive, right? More layers should mean more power! The original ResNet paper ("Deep Residual Learning for Image Recognition" by Kaiming He et al.) suggested this isn't because the network <em>can't</em> learn, but because optimizing these very deep networks becomes incredibly difficult.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;"><img alt="comparison" src="https://miro.medium.com/v2/resize:fit:1400/1*Cf7kM-zS7GbtQd6ljQkEsg.png"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><em>(Fig.1) The </em><em>degradation</em><em> problem: Deeper plain networks can have higher training error.</em></td>
+</tr>
+</tbody>
+</table>
+<p>ResNet tackles this by introducing a "residual learning" framework. The core idea is surprisingly elegant: instead of trying to make a stack of layers learn an underlying mapping <code>H(x)</code> directly, we let them learn a <em>residual</em> mapping <code>F(x) = H(x) - x</code>. The original mapping then becomes <code>F(x) + x</code>.</p>
+<p>This <code>+ x</code> part is achieved through "shortcut connections" or "skip connections," which essentially allow the input <code>x</code> from a previous layer to be added to the output of a current stack of layers.</p>
+<p><img alt="a block in residual network" src="https://kharshit.github.io/img/resnet_block.png">
+<em>A typical residual block. The input <code>x</code> is added back after passing through some layers.</em></p>
+<p>Why does this help?
+1.  <strong>Easier Optimization:</strong> If the optimal function <code>H(x)</code> is close to an identity mapping (i.e., <code>H(x) = x</code>), it's easier for the layers to learn <code>F(x) = 0</code> (a zero function) than to learn an identity mapping through multiple non-linear layers. The shortcut connection takes care of the identity part.
+2.  <strong>Improved Gradient Flow:</strong> These shortcuts provide direct paths for gradients to propagate during backpropagation, mitigating the vanishing gradient problem in very deep networks. This, combined with Batch Normalization, makes training much smoother.</p>
+<p>The paper puts it nicely:</p>
+<blockquote>
+<p>If one hypothesizes that multiple nonlinear layers can asymptotically approximate complicated functions... then it is equivalent to hypothesize that they can asymptotically approximate the residual functions, i.e.,H(x) − x... So rather than expect stacked layers to approximate H(x), we explicitly let these layers approximate a residual function F(x) := H(x) − x. The original function thus becomes F(x)+x.</p>
+</blockquote>
+<p>The shortcut connections can be:
+*   <strong>Identity mapping:</strong> If input <code>x</code> and output <code>F(x)</code> have the same dimensions. No extra parameters!
+*   <strong>Padding with zeros:</strong> To match dimensions if they differ. Still no extra parameters.
+*   <strong>Linear projection (e.g., a 1x1 convolution):</strong> To match dimensions, especially when channel numbers change or downsampling occurs. This adds some parameters but offers more flexibility. The paper refers to this as option B or C depending on whether it's used only for dimension matching or for all shortcuts.</p>
+<h2>Peeking into the ResNet Architecture 🏗️</h2>
+<p>ResNets are typically much deeper than earlier networks like VGG, yet often have <em>fewer</em> parameters and lower computational complexity (FLOPs).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;"><img alt="Architecture" src="https://developer.ridgerun.com/wiki/images/f/f5/Resnet_architecture.png"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">(Fig.3) VGG (bottom), a plain 34-layer network (middle), and a 34-layer ResNet (top). Notice the shortcut connections in the ResNet.</td>
+</tr>
+</tbody>
+</table>
+<p>The architecture is built by stacking residual blocks. There are two main types of blocks commonly used:</p>
+<ol>
+<li><strong>Basic Block:</strong> Typically consists of two 3x3 convolutional layers.</li>
+<li><strong>Bottleneck Block:</strong> Uses a sequence of 1x1, 3x3, and then another 1x1 convolution. The 1x1 layers are used to reduce and then restore dimensions, making the 3x3 layer operate on a smaller input/output channel size. This is more computationally efficient for deeper networks.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;"><img alt="different architecture" src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcQjWxNi-ZdW4gC4Ikg2X0nrhQnMy_i9lthLSFHfOE1_weSP-903&amp;usqp=CAU"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">(Fig. 4) Left: Basic Block. Right: Bottleneck Block.</td>
+</tr>
+</tbody>
+</table>
+<p>Down-sampling (reducing the spatial dimensions of feature maps) is usually done by setting the stride of the first convolutional layer in a block to 2. When downsampling or changing the number of channels, the shortcut connection also needs to adapt, often using a projection (like a 1x1 convolution with stride 2).</p>
+<p>For my CIFAR-10 implementation, the network structure generally follows the paper's design for this dataset:
+*   Input: 32x32 images (CIFAR-10). The per-pixel mean is subtracted.
+*   First layer: A 3x3 convolution.
+*   Then, stacks of residual blocks. For a ResNet-<code>N</code> (e.g., ResNet-32), <code>N</code> refers to the number of weighted layers. The paper describes a structure of <code>6n+2</code> layers for CIFAR-10, where <code>n</code> is the number of blocks in each "stage".
+*   These blocks operate on feature maps of sizes 32x32, then 16x16, then 8x8.
+*   The number of filters typically increases (e.g., 16, 32, 64) as spatial dimensions decrease.
+*   Subsampling is done by convolutions with a stride of 2.
+*   The network ends with a global average pooling layer, a fully-connected layer (10-way for CIFAR-10 classes), and a softmax.</p>
+<p>Here's a summary table from the paper for the layer structure:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">output map size</th>
+<th style="text-align: center;">32x32</th>
+<th style="text-align: center;">16x16</th>
+<th style="text-align: center;">8x8</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">#filters</td>
+<td style="text-align: center;">16</td>
+<td style="text-align: center;">32</td>
+<td style="text-align: center;">64</td>
+</tr>
+<tr>
+<td style="text-align: center;">#layers</td>
+<td style="text-align: center;">2n+1</td>
+<td style="text-align: center;">2n</td>
+<td style="text-align: center;">2n</td>
+</tr>
+<tr>
+<td style="text-align: center;"><em>(Note: The first <code>2n+1</code> includes the initial conv layer)</em></td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;"></td>
+</tr>
+</tbody>
+</table>
+<h2>Let's Build ResNet with PyTorch! 💻</h2>
+<p>Alright, let's get our hands dirty and see how we can implement this. I'll walk through the key components.</p>
+<h3>1. The Building Blocks: <code>BasicModule</code> and <code>BottleNeckModule</code></h3>
+<p>These are the heart of our ResNet.</p>
+<p><strong><code>BasicModule</code></strong>
+This block typically has two 3x3 convolutional layers. Batch Normalization (BN) is applied after each convolution, and an activation function (I used CELU in some experiments, ReLU is also common) follows. The shortcut connection adds the input to the output of the second BN layer, followed by a final activation.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+<span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
+
+<span class="k">class</span> <span class="nc">BasicModule</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Basic block with identity maps or projections in shortcuts.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s1">&#39;A&#39;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">()</span> <span class="c1"># Default to identity</span>
+        <span class="k">if</span> <span class="n">stride</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">in_planes</span> <span class="o">!=</span> <span class="n">out_planes</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">option</span> <span class="o">==</span> <span class="s1">&#39;A&#39;</span><span class="p">:</span> <span class="c1"># Zero-padding for dimension increase</span>
+                <span class="c1"># Pad the channels, and downsample if stride is not 1</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">F</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span>
+                    <span class="n">x</span><span class="p">[:,</span> <span class="p">:,</span> <span class="p">::</span><span class="n">stride</span><span class="p">,</span> <span class="p">::</span><span class="n">stride</span><span class="p">],</span> 
+                    <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="n">out_planes</span> <span class="o">-</span> <span class="n">in_planes</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span><span class="p">,</span> <span class="p">(</span><span class="n">out_planes</span> <span class="o">-</span> <span class="n">in_planes</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span><span class="p">),</span>
+                    <span class="s2">&quot;constant&quot;</span><span class="p">,</span>
+                    <span class="mi">0</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="n">option</span> <span class="o">==</span> <span class="s1">&#39;B&#39;</span> <span class="ow">or</span> <span class="n">option</span> <span class="o">==</span> <span class="s1">&#39;C&#39;</span><span class="p">:</span> <span class="c1"># Projection shortcut (1x1 conv)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">)</span>
+                <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">x_short</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="c1"># Apply shortcut transformation to input</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">celu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bn1</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv1</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.075</span><span class="p">)</span> <span class="c1"># Using CELU as in one of my experiments</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bn2</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv2</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="n">x_short</span> <span class="c1"># Add shortcut</span>
+        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">celu</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.075</span><span class="p">)</span>
+</code></pre></div>
+
+<p><em>Brief explanation of options A, B, C:</em>
+*   <strong>Option A (Padding):</strong> When dimensions/channels change, use zero-padding for shortcuts. No extra parameters.
+*   <strong>Option B (Projection for dim change):</strong> Use 1x1 convolutions for shortcuts <em>only</em> when dimensions/channels change. Adds parameters but is more flexible.
+*   <strong>Option C (All projections):</strong> Use 1x1 convolutions for <em>all</em> shortcuts. Most parameters, potentially most powerful.
+My code implements 'A' and 'B'/'C' (projection).</p>
+<p><strong><code>BottleNeckModule</code></strong>
+This block uses three convolutions: a 1x1 to reduce channels, a 3x3 convolution, and another 1x1 to restore channels. This can be more efficient than the <code>BasicModule</code> for deeper networks.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">BottleNeckModule</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Bottleneck block.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">expansion</span> <span class="o">=</span> <span class="mi">4</span> <span class="c1"># For standard ResNets, bottleneck output channels are 4x the internal &#39;planes&#39;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_planes</span><span class="p">,</span> <span class="n">planes</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s1">&#39;A&#39;</span><span class="p">):</span> <span class="c1"># &#39;planes&#39; here is the intermediate channel size</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="n">out_planes_bottleneck</span> <span class="o">=</span> <span class="n">planes</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">expansion</span> <span class="c1"># Actual output channels of the block</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">planes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">planes</span><span class="p">,</span> <span class="n">planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">planes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv3</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">planes</span><span class="p">,</span> <span class="n">out_planes_bottleneck</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn3</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes_bottleneck</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">stride</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">in_planes</span> <span class="o">!=</span> <span class="n">out_planes_bottleneck</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">option</span> <span class="o">==</span> <span class="s1">&#39;A&#39;</span><span class="p">:</span> <span class="c1"># This option A for bottleneck is a bit different than standard.</span>
+                              <span class="c1"># Usually, bottleneck implies projection for dimension matching.</span>
+                              <span class="c1"># The provided code structure uses a similar lambda for padding.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">F</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span>
+                    <span class="n">x</span><span class="p">[:,</span> <span class="p">:,</span> <span class="p">::</span><span class="n">stride</span><span class="p">,</span> <span class="p">::</span><span class="n">stride</span><span class="p">],</span>
+                    <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="n">out_planes_bottleneck</span> <span class="o">-</span> <span class="n">in_planes</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span><span class="p">,</span> <span class="p">(</span><span class="n">out_planes_bottleneck</span> <span class="o">-</span> <span class="n">in_planes</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span><span class="p">),</span>
+                    <span class="s2">&quot;constant&quot;</span><span class="p">,</span>
+                    <span class="mi">0</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="n">option</span> <span class="o">==</span> <span class="s1">&#39;B&#39;</span> <span class="ow">or</span> <span class="n">option</span> <span class="o">==</span> <span class="s1">&#39;C&#39;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes_bottleneck</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes_bottleneck</span><span class="p">)</span>
+                <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">x_short</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">celu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bn1</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv1</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.075</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">celu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bn2</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv2</span><span class="p">(</span><span class="n">out</span><span class="p">)),</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.075</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bn3</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv3</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="n">x_short</span>
+        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">celu</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.075</span><span class="p">)</span>
+</code></pre></div>
+
+<p><em>(Note: In my <code>models.py</code> file, the <code>BottleNeckModule</code>'s <code>out_planes</code> argument was handled a bit differently from the classic ResNet definition where <code>out_planes</code> in <code>__init__</code> becomes <code>planes * expansion</code>. I've adjusted the snippet above to be more aligned with the provided <code>models.py</code> logic, where <code>out_planes</code> for the <code>BottleNeckModule</code> in the <code>ResNet</code> class is passed directly without explicit expansion factor consideration in the <code>ResNet</code> class itself for filter map definition. The <code>main.py</code> code also passes <code>filter_map</code> directly. The original <code>BottleNeckModule</code> in <code>models.py</code> had <code>out_planes</code> as the first conv output, and also for the third conv output, which means no expansion was implemented in that specific code. For clarity, I'll stick to the provided code's logic below.)</em></p>
+<p>Here's the <code>BottleNeckModule</code> as it was in the provided <code>models.py</code> (which doesn't implement the <code>expansion</code> factor explicitly, <code>out_planes</code> is consistent):</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">BottleNeckModule</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Bottleneck block from the provided models.py</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">stride</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s1">&#39;A&#39;</span><span class="p">):</span> <span class="c1"># out_planes is used for intermediate and final convs</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="c1"># The original code uses out_planes for the 1x1 and 3x3 layers,</span>
+        <span class="c1"># and also for the final 1x1 layer. This means expansion=1 essentially.</span>
+        <span class="c1"># Or, &#39;out_planes&#39; argument signifies the &#39;planes&#39; for the bottleneck, and then</span>
+        <span class="c1"># this same number is used for the output of the block.</span>
+        <span class="c1"># Let&#39;s assume &#39;out_planes&#39; is the target channel size for this block.</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">)</span> <span class="c1"># Stride here</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv3</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="c1"># Stride was originally on 3rd conv in some designs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn3</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">stride</span><span class="o">==</span><span class="mi">1</span> <span class="ow">and</span> <span class="n">in_planes</span><span class="o">==</span><span class="n">out_planes</span><span class="p">:</span> <span class="c1"># Condition for shortcut</span>
+            <span class="k">if</span> <span class="n">option</span> <span class="o">!=</span> <span class="s1">&#39;C&#39;</span><span class="p">:</span> 
+                <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span> <span class="c1"># Option C means always use projection</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="c1"># Stride for shortcut should match data path</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">)</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span> <span class="c1"># Stride != 1 or in_planes != out_planes</span>
+            <span class="k">if</span> <span class="n">option</span> <span class="o">==</span> <span class="s1">&#39;A&#39;</span><span class="p">:</span>
+                <span class="c1"># Downsample if stride is not 1, and pad channels</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">F</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">x</span><span class="p">[:,:,::</span><span class="n">stride</span><span class="p">,::</span><span class="n">stride</span><span class="p">],</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,(</span><span class="n">out_planes</span><span class="o">-</span><span class="n">in_planes</span><span class="p">)</span><span class="o">//</span><span class="mi">2</span><span class="p">,(</span><span class="n">out_planes</span><span class="o">-</span><span class="n">in_planes</span><span class="p">)</span><span class="o">//</span><span class="mi">2</span> <span class="k">if</span> <span class="n">out_planes</span> <span class="o">&gt;</span> <span class="n">in_planes</span> <span class="k">else</span> <span class="mi">0</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span> <span class="c1"># Option B or C: use projection</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="n">stride</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+                    <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">out_planes</span><span class="p">)</span>
+                <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">x_short</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">shortcut</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="c1"># Apply shortcut to original x</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">celu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bn1</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv1</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span><span class="n">alpha</span> <span class="o">=</span> <span class="mf">0.075</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">celu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bn2</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv2</span><span class="p">(</span><span class="n">out</span><span class="p">)),</span><span class="n">alpha</span> <span class="o">=</span> <span class="mf">0.075</span><span class="p">)</span> <span class="c1"># Conv2 handles stride</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bn3</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv3</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
+        <span class="n">out</span> <span class="o">+=</span> <span class="n">x_short</span> <span class="c1"># Add shortcut</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">celu</span><span class="p">(</span><span class="n">out</span><span class="p">,</span><span class="n">alpha</span> <span class="o">=</span> <span class="mf">0.075</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span>
+</code></pre></div>
+
+<h3>2. Assembling the Full ResNet Model: The <code>ResNet</code> Class</h3>
+<p>Now we use these blocks to build the complete network.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">ResNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">block</span><span class="p">,</span> <span class="n">filter_map</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">num_classes</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="s1">&#39;A&#39;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="c1"># &#39;n&#39; is the number of residual blocks in each stage (e.g., for ResNet-20 on CIFAR, n=3 for 6n+2 layers)</span>
+        <span class="c1"># filter_map typically: [16, 32, 64] for CIFAR-10</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_planes</span> <span class="o">=</span> <span class="n">filter_map</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="c1"># Keep track of current input planes for layers</span>
+
+        <span class="c1"># Initial convolution</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv1</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_channels</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">out_channels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">kernel_size</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">in_planes</span><span class="p">)</span>
+
+        <span class="c1"># Residual blocks - Stage 1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">block1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_layer</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="n">filter_map</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">n</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">)</span>
+
+        <span class="c1"># Residual blocks - Stage 2</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">block2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_layer</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="n">filter_map</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">n</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">)</span>
+
+        <span class="c1"># Residual blocks - Stage 3</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">block3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_layer</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="n">filter_map</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">n</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">)</span>
+
+        <span class="c1"># self.drop3  = nn.Dropout2d(0.25) # Optional dropout</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">globalavgpool</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">AdaptiveAvgPool2d</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span> <span class="c1"># Output size (1,1) for any input size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fc</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">block</span><span class="o">.</span><span class="n">expansion</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="s1">&#39;expansion&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span><span class="p">),</span> <span class="n">num_classes</span><span class="p">)</span>
+        <span class="c1"># For the provided BasicModule/BottleNeckModule (without explicit expansion in its __init__),</span>
+        <span class="c1"># the output channels of the last block stage is filter_map[2].</span>
+        <span class="c1"># If using a standard BottleNeck with expansion=4, it would be filter_map[2] * 4.</span>
+        <span class="c1"># My provided models.py doesn&#39;t use expansion factor this way, so fc input is filter_map[2].</span>
+        <span class="c1"># Let&#39;s correct fc based on the provided code&#39;s behavior.</span>
+        <span class="c1"># The provided model has globalavgpool(2), so 2*2*filter_map[2]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">globalavgpool</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">AdaptiveAvgPool2d</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> 
+        <span class="bp">self</span><span class="o">.</span><span class="n">fc</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="mi">2</span><span class="o">*</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="n">num_classes</span><span class="p">)</span>
+
+
+    <span class="k">def</span> <span class="nf">_make_layer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">block</span><span class="p">,</span> <span class="n">planes</span><span class="p">,</span> <span class="n">num_blocks</span><span class="p">,</span> <span class="n">stride</span><span class="p">,</span> <span class="n">option</span><span class="p">):</span>
+        <span class="n">strides</span> <span class="o">=</span> <span class="p">[</span><span class="n">stride</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">*</span><span class="p">(</span><span class="n">num_blocks</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">layers</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">current_stride</span> <span class="ow">in</span> <span class="n">strides</span><span class="p">:</span>
+            <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">block</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">planes</span><span class="p">,</span> <span class="n">current_stride</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">))</span>
+            <span class="c1"># Update in_planes for the next block. </span>
+            <span class="c1"># If block is BottleNeck with expansion, self.in_planes = planes * block.expansion</span>
+            <span class="c1"># For the provided blocks, output planes = &#39;planes&#39; argument.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">in_planes</span> <span class="o">=</span> <span class="n">planes</span> <span class="o">*</span> <span class="p">(</span><span class="n">block</span><span class="o">.</span><span class="n">expansion</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="s1">&#39;expansion&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="s1">&#39;expansion&#39;</span><span class="p">):</span> <span class="c1"># For BasicModule or the given BottleNeckModule</span>
+                 <span class="bp">self</span><span class="o">.</span><span class="n">in_planes</span> <span class="o">=</span> <span class="n">planes</span>
+
+
+        <span class="k">return</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span><span class="o">*</span><span class="n">layers</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bn1</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv1</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span> <span class="c1"># Initial activation</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">block1</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">block2</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">block3</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="c1"># x = self.drop3(x) # Optional dropout</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">globalavgpool</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="c1"># Flatten</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fc</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">x</span>
+</code></pre></div>
+
+<p><em>Note on <code>_make_layer</code> and <code>self.in_planes</code>: In standard ResNet implementations, especially with Bottleneck blocks, an <code>expansion</code> attribute (usually 4) on the block class is used. The <code>planes</code> argument to <code>_make_layer</code> would be the </em>intermediate<em> channel size for bottlenecks, and the output channel size would be <code>planes * expansion</code>. <code>self.in_planes</code> would then be updated to this <code>planes * expansion</code>. The provided <code>models.py</code> structure is a bit simplified, especially for <code>BottleNeckModule</code> where <code>out_planes</code> directly defines the output channels without a separate expansion factor. My <code>ResNet</code> class above tries to stick to the provided <code>models.py</code> logic.</em></p>
+<p>The <code>ResNet</code> class from the <code>models.py</code> file you provided looks like this (which I'll use for consistency):</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span> <span class="nc">ResNet</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">block</span><span class="p">,</span><span class="n">filter_map</span><span class="p">,</span><span class="n">n</span><span class="p">,</span><span class="n">num_classes</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span><span class="n">option</span><span class="o">=</span><span class="s1">&#39;A&#39;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">conv1</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv2d</span><span class="p">(</span><span class="n">in_channels</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">out_channels</span><span class="o">=</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">kernel_size</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span><span class="n">padding</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm2d</span><span class="p">(</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="c1"># Stage 1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">block1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">MakeResNetLayer</span><span class="p">(</span><span class="n">block</span><span class="p">,</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">n</span><span class="p">,</span><span class="n">stride</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">)</span>
+        <span class="c1"># Stage 2</span>
+        <span class="c1"># For block2, input is filter_map[0], output is filter_map[1]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">block2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">MakeResNetLayer</span><span class="p">(</span><span class="n">block</span><span class="p">,(</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span><span class="n">n</span><span class="p">,</span><span class="n">stride</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span><span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">)</span>
+        <span class="c1"># Stage 3</span>
+        <span class="c1"># For block3, input is filter_map[1], output is filter_map[2]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">block3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">MakeResNetLayer</span><span class="p">(</span><span class="n">block</span><span class="p">,(</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span><span class="n">n</span><span class="p">,</span><span class="n">stride</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span><span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">drop3</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout2d</span><span class="p">(</span><span class="mf">0.25</span><span class="p">)</span> <span class="c1"># As in the provided file (was commented out in some places)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">globalavgpool</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">AdaptiveAvgPool2d</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="c1"># Results in a 2x2 feature map per channel</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fc</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="mi">2</span><span class="o">*</span><span class="n">filter_map</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="n">num_classes</span><span class="p">)</span>  
+
+    <span class="k">def</span> <span class="nf">MakeResNetLayer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">block</span><span class="p">,</span><span class="n">filters</span><span class="p">,</span><span class="n">num_blocks</span><span class="p">,</span><span class="n">stride</span><span class="p">,</span><span class="n">option</span><span class="o">=</span><span class="s1">&#39;A&#39;</span><span class="p">):</span>
+        <span class="c1"># &#39;filters&#39; can be a single int (for first stage) or a tuple (in_planes, out_planes)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filters</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span> <span class="o">=</span> <span class="n">filters</span>
+        <span class="k">else</span><span class="p">:</span> <span class="c1"># First stage, in_planes is filter_map[0], out_planes is also filter_map[0]</span>
+            <span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span> <span class="o">=</span> <span class="n">filters</span><span class="p">,</span> <span class="n">filters</span>
+
+        <span class="n">layers</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c1"># First block in the layer handles stride and potential change in channels</span>
+        <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">block</span><span class="p">(</span><span class="n">in_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">stride</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">))</span>
+
+        <span class="c1"># Subsequent blocks in the layer</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">num_blocks</span><span class="p">):</span> <span class="c1"># num_blocks-1 more blocks</span>
+            <span class="n">layers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">block</span><span class="p">(</span><span class="n">out_planes</span><span class="p">,</span> <span class="n">out_planes</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">option</span><span class="o">=</span><span class="n">option</span><span class="p">))</span> <span class="c1"># Stride is 1 here</span>
+
+        <span class="k">return</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span><span class="o">*</span><span class="n">layers</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">x</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bn1</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">conv1</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span> <span class="c1"># ReLU for initial layer</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">block1</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">block2</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">block3</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">drop3</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="c1"># Applying dropout before pooling</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">globalavgpool</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="c1"># x = x.view(-1, self.find_shape(x)) # Original had a find_shape helper</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="c1"># Standard way to flatten</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fc</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">x</span>
+
+    <span class="c1"># def find_shape(self, x): # Helper from original file</span>
+    <span class="c1">#     res = 1</span>
+    <span class="c1">#     for dim in x[0].shape:</span>
+    <span class="c1">#         res *= dim</span>
+    <span class="c1">#     return res</span>
+</code></pre></div>
+
+<h3>3. Preparing the Data: CIFAR-10 Loader 🖼️</h3>
+<p>We need to load and preprocess the CIFAR-10 dataset. This involves normalization and data augmentation for the training set.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">torchvision.transforms</span> <span class="k">as</span> <span class="nn">transforms</span>
+<span class="kn">import</span> <span class="nn">torchvision</span>
+<span class="c1"># torch is already imported</span>
+
+<span class="k">def</span> <span class="nf">get_loader</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">num_workers</span><span class="p">):</span>
+    <span class="c1"># Transformations for training data</span>
+    <span class="n">transform_train</span> <span class="o">=</span> <span class="n">transforms</span><span class="o">.</span><span class="n">Compose</span><span class="p">([</span>
+        <span class="n">transforms</span><span class="o">.</span><span class="n">RandomCrop</span><span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>      <span class="c1"># Randomly crop images</span>
+        <span class="n">transforms</span><span class="o">.</span><span class="n">RandomHorizontalFlip</span><span class="p">(</span><span class="n">p</span><span class="o">=</span><span class="mf">0.5</span><span class="p">),</span>    <span class="c1"># Randomly flip images horizontally (p=0.7 in original)</span>
+        <span class="n">transforms</span><span class="o">.</span><span class="n">ToTensor</span><span class="p">(),</span>                     <span class="c1"># Convert PIL image to PyTorch tensor</span>
+        <span class="n">transforms</span><span class="o">.</span><span class="n">Normalize</span><span class="p">((</span><span class="mf">0.4914</span><span class="p">,</span> <span class="mf">0.4822</span><span class="p">,</span> <span class="mf">0.4465</span><span class="p">),</span> <span class="p">(</span><span class="mf">0.2023</span><span class="p">,</span> <span class="mf">0.1994</span><span class="p">,</span> <span class="mf">0.2010</span><span class="p">))</span> <span class="c1"># Normalize</span>
+    <span class="p">])</span>
+
+    <span class="c1"># Transformations for test data (no augmentation, just normalization)</span>
+    <span class="n">transform_test</span> <span class="o">=</span> <span class="n">transforms</span><span class="o">.</span><span class="n">Compose</span><span class="p">([</span>
+        <span class="n">transforms</span><span class="o">.</span><span class="n">ToTensor</span><span class="p">(),</span>
+        <span class="n">transforms</span><span class="o">.</span><span class="n">Normalize</span><span class="p">((</span><span class="mf">0.4914</span><span class="p">,</span> <span class="mf">0.4822</span><span class="p">,</span> <span class="mf">0.4465</span><span class="p">),</span> <span class="p">(</span><span class="mf">0.2023</span><span class="p">,</span> <span class="mf">0.1994</span><span class="p">,</span> <span class="mf">0.2010</span><span class="p">))</span> <span class="c1"># Same normalization as train</span>
+    <span class="p">])</span>
+
+    <span class="c1"># CIFAR-10 training dataset</span>
+    <span class="n">trainset</span> <span class="o">=</span> <span class="n">torchvision</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">CIFAR10</span><span class="p">(</span>
+        <span class="n">root</span><span class="o">=</span><span class="s1">&#39;./data&#39;</span><span class="p">,</span> 
+        <span class="n">download</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> 
+        <span class="n">train</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> 
+        <span class="n">transform</span><span class="o">=</span><span class="n">transform_train</span>
+    <span class="p">)</span>
+    <span class="n">trainloader</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">DataLoader</span><span class="p">(</span>
+        <span class="n">trainset</span><span class="p">,</span> 
+        <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> 
+        <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> 
+        <span class="n">num_workers</span><span class="o">=</span><span class="n">num_workers</span>
+    <span class="p">)</span>
+
+    <span class="c1"># CIFAR-10 test dataset</span>
+    <span class="n">testset</span> <span class="o">=</span> <span class="n">torchvision</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">CIFAR10</span><span class="p">(</span>
+        <span class="n">root</span><span class="o">=</span><span class="s1">&#39;./data&#39;</span><span class="p">,</span> 
+        <span class="n">download</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> 
+        <span class="n">train</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> 
+        <span class="n">transform</span><span class="o">=</span><span class="n">transform_test</span>
+    <span class="p">)</span>
+    <span class="n">testloader</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">DataLoader</span><span class="p">(</span>
+        <span class="n">testset</span><span class="p">,</span> 
+        <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> 
+        <span class="n">shuffle</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="c1"># No need to shuffle test data</span>
+        <span class="n">num_workers</span><span class="o">=</span><span class="n">num_workers</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">trainloader</span><span class="p">,</span> <span class="n">testloader</span>
+</code></pre></div>
+
+<h3>4. Setting up the Training Pipeline ⚙️</h3>
+<p>This involves defining how our model will be configured and trained. The <code>main.py</code> script uses <code>argparse</code> for this.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">OrderedDict</span>
+<span class="c1"># Assuming ResNet, BasicModule, BottleNeckModule are defined as above</span>
+<span class="c1"># Assuming get_loader is defined as above</span>
+
+<span class="k">def</span> <span class="nf">parse_args</span><span class="p">():</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="c1"># Model config</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--block_type&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;basic&#39;</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;basic&#39;</span><span class="p">,</span> <span class="s1">&#39;bottleneck&#39;</span><span class="p">],</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Type of block: &#39;basic&#39; or &#39;bottleneck&#39;&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--depth&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Depth factor &#39;n&#39; for ResNet (e.g., 3 for ResNet-20 as 6n+2=20)&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--option&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;C&#39;</span><span class="p">],</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Shortcut option: A, B, or C&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Optim config</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--epochs&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">160</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--batch_size&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">128</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--base_lr&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--weight_decay&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">)</span>
+    <span class="c1"># momentum is for SGD, Adam is used in the provided main.py</span>
+    <span class="c1"># parser.add_argument(&#39;--momentum&#39;, type=float, default=0.9) </span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--milestones&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;[80, 120]&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Epochs for LR decay (JSON list)&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--lr_decay&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Factor for LR decay&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Run_config</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--device&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">&#39;cuda&#39;</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="s1">&#39;cpu&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">&#39;--num_workers&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span> <span class="c1"># In a script, this would run. For blog, imagine args are set.</span>
+
+    <span class="c1"># For demonstration, let&#39;s assume some args for direct use:</span>
+    <span class="c1"># args = argparse.Namespace(block_type=&#39;basic&#39;, depth=3, option=&#39;B&#39;, epochs=75, batch_size=128, </span>
+    <span class="c1">#                           base_lr=0.001, weight_decay=1e-4, milestones=&#39;[50, 70]&#39;, </span>
+    <span class="c1">#                           lr_decay=0.1, device=&#39;cuda&#39; if torch.cuda.is_available() else &#39;cpu&#39;, num_workers=2)</span>
+
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">([</span>
+        <span class="p">(</span><span class="s1">&#39;block_type&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">block_type</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;depth&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">depth</span><span class="p">),</span> <span class="c1"># This is &#39;n&#39;</span>
+        <span class="p">(</span><span class="s1">&#39;option&#39;</span><span class="p">,</span><span class="n">args</span><span class="o">.</span><span class="n">option</span><span class="p">)</span>
+    <span class="p">])</span>
+
+    <span class="n">optim_config</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">([</span>
+        <span class="p">(</span><span class="s1">&#39;epochs&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">epochs</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;batch_size&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;base_lr&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">base_lr</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;weight_decay&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">weight_decay</span><span class="p">),</span>
+        <span class="c1"># (&#39;momentum&#39;, args.momentum), # Not used with Adam</span>
+        <span class="p">(</span><span class="s1">&#39;milestones&#39;</span><span class="p">,</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">milestones</span><span class="p">)),</span>
+        <span class="p">(</span><span class="s1">&#39;lr_decay&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">lr_decay</span><span class="p">),</span>
+    <span class="p">])</span>
+
+    <span class="n">run_config</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">([</span>
+        <span class="p">(</span><span class="s1">&#39;device&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">device</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;num_workers&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">num_workers</span><span class="p">),</span>
+    <span class="p">])</span>
+
+    <span class="n">config</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">([</span>
+        <span class="p">(</span><span class="s1">&#39;model_config&#39;</span><span class="p">,</span> <span class="n">model_config</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;optim_config&#39;</span><span class="p">,</span> <span class="n">optim_config</span><span class="p">),</span>
+        <span class="p">(</span><span class="s1">&#39;run_config&#39;</span><span class="p">,</span> <span class="n">run_config</span><span class="p">),</span>
+    <span class="p">])</span>
+    <span class="k">return</span> <span class="n">config</span>
+
+<span class="c1"># --- In a main script execution context: ---</span>
+<span class="c1"># config = parse_args() # This would be called</span>
+
+<span class="c1"># For this blog, let&#39;s simulate a config:</span>
+<span class="n">config</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;model_config&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;block_type&#39;</span><span class="p">:</span> <span class="s1">&#39;basic&#39;</span><span class="p">,</span> <span class="s1">&#39;depth&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="s1">&#39;option&#39;</span><span class="p">:</span> <span class="s1">&#39;B&#39;</span><span class="p">},</span> <span class="c1"># depth (n)=3 -&gt; ResNet20 (6*3+2)</span>
+    <span class="s1">&#39;optim_config&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;epochs&#39;</span><span class="p">:</span> <span class="mi">75</span><span class="p">,</span> <span class="s1">&#39;batch_size&#39;</span><span class="p">:</span> <span class="mi">128</span><span class="p">,</span> <span class="s1">&#39;base_lr&#39;</span><span class="p">:</span> <span class="mf">0.001</span><span class="p">,</span> <span class="c1"># Adam usually needs smaller LR</span>
+                     <span class="s1">&#39;weight_decay&#39;</span><span class="p">:</span> <span class="mf">1e-4</span><span class="p">,</span> <span class="s1">&#39;milestones&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">70</span><span class="p">],</span> <span class="s1">&#39;lr_decay&#39;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
+    <span class="s1">&#39;run_config&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;device&#39;</span><span class="p">:</span> <span class="s1">&#39;cuda&#39;</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="s1">&#39;cpu&#39;</span><span class="p">,</span> <span class="s1">&#39;num_workers&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span>
+<span class="p">}</span>
+
+
+<span class="c1"># Model Instantiation</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using </span><span class="si">{</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;run_config&#39;</span><span class="p">][</span><span class="s1">&#39;device&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> device.&quot;</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">config</span><span class="p">[</span><span class="s1">&#39;model_config&#39;</span><span class="p">][</span><span class="s1">&#39;block_type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;basic&#39;</span><span class="p">:</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">ResNet</span><span class="p">(</span><span class="n">BasicModule</span><span class="p">,</span> <span class="n">filter_map</span><span class="o">=</span><span class="p">[</span><span class="mi">16</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">64</span><span class="p">],</span> <span class="n">n</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;model_config&#39;</span><span class="p">][</span><span class="s1">&#39;depth&#39;</span><span class="p">],</span> <span class="n">option</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;model_config&#39;</span><span class="p">][</span><span class="s1">&#39;option&#39;</span><span class="p">])</span>
+<span class="k">else</span><span class="p">:</span> <span class="c1"># bottleneck</span>
+    <span class="c1"># Using the BottleNeckModule as per the provided models.py</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">ResNet</span><span class="p">(</span><span class="n">BottleNeckModule</span><span class="p">,</span> <span class="n">filter_map</span><span class="o">=</span><span class="p">[</span><span class="mi">16</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">64</span><span class="p">],</span> <span class="n">n</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;model_config&#39;</span><span class="p">][</span><span class="s1">&#39;depth&#39;</span><span class="p">],</span> <span class="n">option</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;model_config&#39;</span><span class="p">][</span><span class="s1">&#39;option&#39;</span><span class="p">])</span>
+
+<span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;run_config&#39;</span><span class="p">][</span><span class="s1">&#39;device&#39;</span><span class="p">])</span>
+
+<span class="c1"># Optimizer and Scheduler</span>
+<span class="c1"># The original main.py used Adam. The README mentions SGD-like params (base_lr=0.1, momentum). Let&#39;s stick to Adam.</span>
+<span class="n">optimizer</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span>
+    <span class="n">params</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span>
+    <span class="n">lr</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;optim_config&#39;</span><span class="p">][</span><span class="s1">&#39;base_lr&#39;</span><span class="p">],</span>
+    <span class="n">weight_decay</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;optim_config&#39;</span><span class="p">][</span><span class="s1">&#39;weight_decay&#39;</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">scheduler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">lr_scheduler</span><span class="o">.</span><span class="n">MultiStepLR</span><span class="p">(</span>
+    <span class="n">optimizer</span><span class="p">,</span>
+    <span class="n">milestones</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;optim_config&#39;</span><span class="p">][</span><span class="s1">&#39;milestones&#39;</span><span class="p">],</span>
+    <span class="n">gamma</span><span class="o">=</span><span class="n">config</span><span class="p">[</span><span class="s1">&#39;optim_config&#39;</span><span class="p">][</span><span class="s1">&#39;lr_decay&#39;</span><span class="p">]</span>
+<span class="p">)</span>
+
+<span class="c1"># Loss Function</span>
+<span class="n">criterion</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">CrossEntropyLoss</span><span class="p">()</span>
+
+<span class="c1"># Data Loaders</span>
+<span class="n">train_loader</span><span class="p">,</span> <span class="n">test_loader</span> <span class="o">=</span> <span class="n">get_loader</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">[</span><span class="s1">&#39;optim_config&#39;</span><span class="p">][</span><span class="s1">&#39;batch_size&#39;</span><span class="p">],</span>
+    <span class="n">config</span><span class="p">[</span><span class="s1">&#39;run_config&#39;</span><span class="p">][</span><span class="s1">&#39;num_workers&#39;</span><span class="p">]</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<h3>5. The Training Loop 🏃‍♂️💨</h3>
+<p>This is where the magic happens: feeding data to the model, calculating loss, backpropagating, and updating weights.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">tqdm.auto</span> <span class="kn">import</span> <span class="n">tqdm</span> <span class="c1"># Using tqdm.auto for better notebook/script compatibility</span>
+
+<span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">epochs</span><span class="p">,</span> <span class="n">trainloader</span><span class="p">,</span> <span class="n">testloader</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">criterion</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">scheduler</span><span class="p">):</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="n">train_losses</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">test_losses</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">train_accuracies</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">test_accuracies</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">epochs</span><span class="p">):</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">train</span><span class="p">()</span> <span class="c1"># Set model to training mode</span>
+        <span class="n">trn_corr</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">epoch_train_loss</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+        <span class="c1"># Using tqdm for progress bar</span>
+        <span class="n">train_pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">trainloader</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">epochs</span><span class="si">}</span><span class="s2"> [TRAIN]&quot;</span><span class="p">,</span> <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span> <span class="ow">in</span> <span class="n">train_pbar</span><span class="p">:</span>
+            <span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span> <span class="o">=</span> <span class="n">X_train</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">y_train</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+            <span class="n">y_pred</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">X_train</span><span class="p">)</span>
+            <span class="n">loss</span> <span class="o">=</span> <span class="n">criterion</span><span class="p">(</span><span class="n">y_pred</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
+            <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+
+            <span class="n">epoch_train_loss</span> <span class="o">+=</span> <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">*</span> <span class="n">X_train</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">predicted</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">y_pred</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">trn_corr</span> <span class="o">+=</span> <span class="p">(</span><span class="n">predicted</span> <span class="o">==</span> <span class="n">y_train</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+            <span class="n">train_pbar</span><span class="o">.</span><span class="n">set_postfix</span><span class="p">({</span><span class="s1">&#39;loss&#39;</span><span class="p">:</span> <span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="s1">&#39;acc&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">predicted</span> <span class="o">==</span> <span class="n">y_train</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">/</span> <span class="n">X_train</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)})</span>
+
+        <span class="n">scheduler</span><span class="o">.</span><span class="n">step</span><span class="p">()</span> <span class="c1"># Step the scheduler at the end of each epoch</span>
+
+        <span class="n">epoch_train_loss</span> <span class="o">/=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trainloader</span><span class="o">.</span><span class="n">dataset</span><span class="p">)</span>
+        <span class="n">epoch_train_acc</span> <span class="o">=</span> <span class="n">trn_corr</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">trainloader</span><span class="o">.</span><span class="n">dataset</span><span class="p">)</span>
+        <span class="n">train_losses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">epoch_train_loss</span><span class="p">)</span>
+        <span class="n">train_accuracies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">epoch_train_acc</span><span class="p">)</span>
+
+        <span class="c1"># Validation phase</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span> <span class="c1"># Set model to evaluation mode</span>
+        <span class="n">tst_corr</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">epoch_test_loss</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">test_pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">testloader</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">epochs</span><span class="si">}</span><span class="s2"> [VALID]&quot;</span><span class="p">,</span> <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">X_test</span><span class="p">,</span> <span class="n">y_test</span> <span class="ow">in</span> <span class="n">test_pbar</span><span class="p">:</span>
+                <span class="n">X_test</span><span class="p">,</span> <span class="n">y_test</span> <span class="o">=</span> <span class="n">X_test</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">y_test</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+                <span class="n">y_val</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">X_test</span><span class="p">)</span>
+                <span class="n">val_loss</span> <span class="o">=</span> <span class="n">criterion</span><span class="p">(</span><span class="n">y_val</span><span class="p">,</span> <span class="n">y_test</span><span class="p">)</span>
+
+                <span class="n">epoch_test_loss</span> <span class="o">+=</span> <span class="n">val_loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">*</span> <span class="n">X_test</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">predicted</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">y_val</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">tst_corr</span> <span class="o">+=</span> <span class="p">(</span><span class="n">predicted</span> <span class="o">==</span> <span class="n">y_test</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+                <span class="n">test_pbar</span><span class="o">.</span><span class="n">set_postfix</span><span class="p">({</span><span class="s1">&#39;loss&#39;</span><span class="p">:</span> <span class="n">val_loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="s1">&#39;acc&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">predicted</span> <span class="o">==</span> <span class="n">y_test</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">/</span> <span class="n">X_test</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)})</span>
+
+        <span class="n">epoch_test_loss</span> <span class="o">/=</span> <span class="nb">len</span><span class="p">(</span><span class="n">testloader</span><span class="o">.</span><span class="n">dataset</span><span class="p">)</span>
+        <span class="n">epoch_test_acc</span> <span class="o">=</span> <span class="n">tst_corr</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">testloader</span><span class="o">.</span><span class="n">dataset</span><span class="p">)</span>
+        <span class="n">test_losses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">epoch_test_loss</span><span class="p">)</span>
+        <span class="n">test_accuracies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">epoch_test_acc</span><span class="p">)</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s1">/</span><span class="si">{</span><span class="n">epochs</span><span class="si">}</span><span class="s1"> =&gt; &#39;</span>
+              <span class="sa">f</span><span class="s1">&#39;Train Loss: </span><span class="si">{</span><span class="n">epoch_train_loss</span><span class="si">:</span><span class="s1">.4f</span><span class="si">}</span><span class="s1">, Train Acc: </span><span class="si">{</span><span class="n">epoch_train_acc</span><span class="o">*</span><span class="mi">100</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">% | &#39;</span>
+              <span class="sa">f</span><span class="s1">&#39;Test Loss: </span><span class="si">{</span><span class="n">epoch_test_loss</span><span class="si">:</span><span class="s1">.4f</span><span class="si">}</span><span class="s1">, Test Acc: </span><span class="si">{</span><span class="n">epoch_test_acc</span><span class="o">*</span><span class="mi">100</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">%&#39;</span><span class="p">)</span>
+
+    <span class="n">total_time</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span><span class="p">)</span> <span class="o">/</span> <span class="mi">60</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Training Complete! Duration: </span><span class="si">{</span><span class="n">total_time</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> minutes&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">train_losses</span><span class="p">,</span> <span class="n">test_losses</span><span class="p">,</span> <span class="n">train_accuracies</span><span class="p">,</span> <span class="n">test_accuracies</span>
+
+<span class="c1"># To run the training:</span>
+<span class="c1"># train_loss_vals, test_loss_vals, train_acc_vals, test_acc_vals = train(</span>
+<span class="c1">#     model, </span>
+<span class="c1">#     config[&#39;optim_config&#39;][&#39;epochs&#39;], </span>
+<span class="c1">#     train_loader, </span>
+<span class="c1">#     test_loader, </span>
+<span class="c1">#     config[&#39;run_config&#39;][&#39;device&#39;], </span>
+<span class="c1">#     criterion, </span>
+<span class="c1">#     optimizer, </span>
+<span class="c1">#     scheduler</span>
+<span class="c1"># )</span>
+</code></pre></div>
+
+<p><em>(Note: The <code>tqdm</code> usage in the original <code>main.py</code> was slightly different. I've adapted it to a common pattern for better clarity and to update batch-wise loss/accuracy in the progress bar description.)</em></p>
+<h3>Evaluating the Model 📊</h3>
+<p>After training, we'd want to see how well our model performs. This typically involves plotting accuracy and loss curves, and maybe a confusion matrix. The <code>eval.py</code> file contained helpers for this.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">seaborn</span> <span class="k">as</span> <span class="nn">sns</span>
+<span class="kn">from</span> <span class="nn">sklearn.metrics</span> <span class="kn">import</span> <span class="n">confusion_matrix</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="k">def</span> <span class="nf">plot_metrics</span><span class="p">(</span><span class="n">train_values</span><span class="p">,</span> <span class="n">test_values</span><span class="p">,</span> <span class="n">metric_name</span><span class="p">):</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">train_values</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;Training </span><span class="si">{</span><span class="n">metric_name</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">test_values</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s1">&#39;Test </span><span class="si">{</span><span class="n">metric_name</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">metric_name</span><span class="si">}</span><span class="s1"> over Epochs&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Epochs&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="n">metric_name</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">metric_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="si">}</span><span class="s1">_plot.png&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+<span class="c1"># Example usage after training:</span>
+<span class="c1"># plot_metrics(train_loss_vals, test_loss_vals, &quot;Loss&quot;)</span>
+<span class="c1"># plot_metrics(train_acc_vals, test_acc_vals, &quot;Accuracy&quot;)</span>
+
+<span class="k">def</span> <span class="nf">make_heat_map</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">class_names</span><span class="p">):</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="n">all_preds</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">all_labels</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">X_batch</span><span class="p">,</span> <span class="n">y_batch</span> <span class="ow">in</span> <span class="n">dataloader</span><span class="p">:</span>
+            <span class="n">X_batch</span><span class="p">,</span> <span class="n">y_batch</span> <span class="o">=</span> <span class="n">X_batch</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">y_batch</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">X_batch</span><span class="p">)</span>
+            <span class="n">_</span><span class="p">,</span> <span class="n">preds</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">outputs</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">all_preds</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">preds</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">())</span>
+            <span class="n">all_labels</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">y_batch</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">())</span>
+
+    <span class="n">cm</span> <span class="o">=</span> <span class="n">confusion_matrix</span><span class="p">(</span><span class="n">all_labels</span><span class="p">,</span> <span class="n">all_preds</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">8</span><span class="p">))</span>
+    <span class="n">sns</span><span class="o">.</span><span class="n">heatmap</span><span class="p">(</span><span class="n">cm</span><span class="p">,</span> <span class="n">annot</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">fmt</span><span class="o">=</span><span class="s1">&#39;d&#39;</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s1">&#39;Blues&#39;</span><span class="p">,</span> <span class="n">xticklabels</span><span class="o">=</span><span class="n">class_names</span><span class="p">,</span> <span class="n">yticklabels</span><span class="o">=</span><span class="n">class_names</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">&#39;Predicted Label&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">&#39;True Label&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;Confusion Matrix&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s1">&#39;confusion_matrix.png&#39;</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+<span class="c1"># Example usage:</span>
+<span class="c1"># cifar_classes = [&#39;plane&#39;, &#39;car&#39;, &#39;bird&#39;, &#39;cat&#39;, &#39;deer&#39;, &#39;dog&#39;, &#39;frog&#39;, &#39;horse&#39;, &#39;ship&#39;, &#39;truck&#39;]</span>
+<span class="c1"># _, full_test_loader_for_cm = get_loader(batch_size=1000, num_workers=2) # Use a large batch for CM</span>
+<span class="c1"># make_heat_map(model, full_test_loader_for_cm, config[&#39;run_config&#39;][&#39;device&#39;], cifar_classes)</span>
+</code></pre></div>
+
+<h2>Reflections and Scope for Improvement 🚀</h2>
+<p>The accuracies I got (or rather, the ones reported in the <code>README.md</code> that inspired this) weren't exactly State-of-the-Art (SOTA), and that's okay! This was a learning exercise. Here are some thoughts on why and how things could be improved:</p>
+<ul>
+<li>
+<p><strong>Deeper Networks:</strong> The whole point of ResNet was to go deeper! ResNet-32 or ResNet-56 (for CIFAR-10, meaning n=5 or n=9 for <code>6n+2</code>) or even deeper variants like ResNet-110 (n=18) could yield better results. The README mentions peers getting ~89% with ResNet-50.</p>
+</li>
+<li>
+<p><strong>Hyperparameter Tuning:</strong> Learning rates, weight decay, optimizer choices (SGD with momentum is classic for ResNets), and scheduler settings can make a big difference.</p>
+</li>
+<li>
+<p><strong>More Aggressive Augmentation:</strong> Could help with generalization.</p>
+</li>
+<li>
+<p><strong>Dropout Strategy:</strong> Fine-tuning where and how much dropout is applied.</p>
+</li>
+<li>
+<p><strong>Longer Training:</strong> Sometimes models just need more epochs to converge, especially with complex schedulers.</p>
+</li>
+<li>
+<p><strong>Regularization:</strong> Beyond weight decay and dropout, other techniques might help.</p>
+</li>
+<li>
+<p><strong>The "Overfitting" Observation:</strong> The README mentioned an interesting point: some peers achieved high test accuracy (84%) by letting the model overfit significantly on training data (99% train accuracy) <em>without</em> dropout, regularization, or data augmentation. This is a bit counter-intuitive but sometimes happens in deep learning. Worth exploring, but proceed with caution!</p>
+</li>
+</ul>
+<h2>Wrapping Up</h2>
+<p>Implementing ResNet from scratch (or close to it) is a fantastic way to understand its architecture and the challenges of training deep networks. Even if the results aren't SOTA, the journey is full of learning. The key takeaways for me are the power of residual connections for enabling depth and the significant impact of architectural choices like Basic vs. Bottleneck blocks.</p>
+<p>Hope this was a helpful walkthrough of my (and Pramodh Gopalan's, the original contributor of the README) experience with ResNet on CIFAR-10! Let me know your thoughts.</p>
+<p>Happy coding! 😊</p>
+<hr>
+<p>احمدرضا انعامی</p>                    </article>
+                </aside><!-- /#featured -->
+                    <section id="content" class="body">
+                        <h1>Other articles</h1>
+                        <hr />
+                        <ol id="posts-list" class="hfeed">
+
+                <li><article class="hentry">
+                    <header>
+                        <h1><a href="/diving-deep-into-mobilenetv1-efficient-vision-for-mobile-devices-with-tensorflow.html" rel="bookmark"
+                               title="Permalink to Diving Deep into MobileNetV1: Efficient Vision for Mobile Devices with TensorFlow 📱💡">Diving Deep into MobileNetV1: Efficient Vision for Mobile Devices with TensorFlow 📱💡</a></h1>
+                    </header>
+
+                    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2025-06-05T00:00:00+03:30">
+                Published: Thu 05 June 2025
+        </abbr>
+
+                <address class="vcard author">
+                        By                                 <a class="url fn" href="/author/s-ahmadreza-anaami.html">S. Ahmadreza Anaami</a>
+                </address>
+        <p>In <a href="/category/artificial-intelligence.html">artificial intelligence</a>.</p>
+<p>tags: <a href="/tag/artificial-intelligence.html">artificial intelligence</a> <a href="/tag/deep-learning.html">deep learning</a> <a href="/tag/computer-vision.html">Computer vision</a> <a href="/tag/mobilenet.html">MobileNet</a> <a href="/tag/tensorflow.html">tensorflow</a> <a href="/tag/python.html">python</a> <a href="/tag/mobilenetv1.html">MobileNetV1</a> </p>        
+</footer><!-- /.post-info -->                        <p>Short implementation of MobileNetV1 using tensorflow.</p>
+                        <a class="readmore" href="/diving-deep-into-mobilenetv1-efficient-vision-for-mobile-devices-with-tensorflow.html">read more</a>
+                    </div><!-- /.entry-content -->
+                </article></li>
+
+                <li><article class="hentry">
+                    <header>
+                        <h1><a href="/stardust-in-our-words-an-etymological-journey-with-aster.html" rel="bookmark"
+                               title="Permalink to Stardust in Our Words: An Etymological Journey with 'Aster' ✨">Stardust in Our Words: An Etymological Journey with 'Aster' ✨</a></h1>
+                    </header>
+
+                    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2025-06-05T00:00:00+03:30">
+                Published: Thu 05 June 2025
+        </abbr>
+
+                <address class="vcard author">
+                        By                                 <a class="url fn" href="/author/s-ahmadreza-anaami.html">S. Ahmadreza Anaami</a>
+                </address>
+        <p>In <a href="/category/etymology.html">etymology</a>.</p>
+<p>tags: <a href="/tag/english-language-learning.html">English language learning</a> <a href="/tag/vocabulary.html">vocabulary</a> <a href="/tag/etymology.html">etymology</a> <a href="/tag/aster.html">Aster</a> </p>        
+</footer><!-- /.post-info -->                        <p>learn a vocabulary bag using etymology with Aster root.</p>
+                        <a class="readmore" href="/stardust-in-our-words-an-etymological-journey-with-aster.html">read more</a>
+                    </div><!-- /.entry-content -->
+                </article></li>
+
+                <li><article class="hentry">
+                    <header>
+                        <h1><a href="/the-human-element-in-words-an-etymological-journey-with-anthropos.html" rel="bookmark"
+                               title="Permalink to The Human Element in Words: An Etymological Journey with "Anthropos" 👨‍🏫">The Human Element in Words: An Etymological Journey with "Anthropos" 👨‍🏫</a></h1>
+                    </header>
+
+                    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2025-06-05T00:00:00+03:30">
+                Published: Thu 05 June 2025
+        </abbr>
+
+                <address class="vcard author">
+                        By                                 <a class="url fn" href="/author/s-ahmadreza-anaami.html">S. Ahmadreza Anaami</a>
+                </address>
+        <p>In <a href="/category/etymology.html">etymology</a>.</p>
+<p>tags: <a href="/tag/english-language-learning.html">English language learning</a> <a href="/tag/vocabulary.html">vocabulary</a> <a href="/tag/etymology.html">etymology</a> <a href="/tag/anthropos.html">anthropos</a> </p>        
+</footer><!-- /.post-info -->                        <p>learn a vocabulary bag using etymology with anthropos root.</p>
+                        <a class="readmore" href="/the-human-element-in-words-an-etymological-journey-with-anthropos.html">read more</a>
+                    </div><!-- /.entry-content -->
+                </article></li>
+
+                <li><article class="hentry">
+                    <header>
+                        <h1><a href="/xception-unpacking-the-extreme-inception-for-powerful-image-classification.html" rel="bookmark"
+                               title="Permalink to Xception: Unpacking the "Extreme" Inception for Powerful Image Classification💡">Xception: Unpacking the "Extreme" Inception for Powerful Image Classification💡</a></h1>
+                    </header>
+
+                    <div class="entry-content">
+<footer class="post-info">
+        <abbr class="published" title="2025-06-05T00:00:00+03:30">
+                Published: Thu 05 June 2025
+        </abbr>
+
+                <address class="vcard author">
+                        By                                 <a class="url fn" href="/author/s-ahmadreza-anaami.html">S. Ahmadreza Anaami</a>
+                </address>
+        <p>In <a href="/category/artificial-intelligence.html">artificial intelligence</a>.</p>
+<p>tags: <a href="/tag/artificial-intelligence.html">artificial intelligence</a> <a href="/tag/deep-learning.html">deep learning</a> <a href="/tag/computer-vision.html">Computer vision</a> <a href="/tag/mobilenet.html">MobileNet</a> <a href="/tag/tensorflow.html">tensorflow</a> <a href="/tag/python.html">python</a> <a href="/tag/xception.html">Xception</a> <a href="/tag/convolutions.html">Convolutions</a> </p>        
+</footer><!-- /.post-info -->                        <p>Short implementation of Xception using tensorflow.</p>
+                        <a class="readmore" href="/xception-unpacking-the-extreme-inception-for-powerful-image-classification.html">read more</a>
+                    </div><!-- /.entry-content -->
+                </article></li>
+                    </ol><!-- /#posts-list -->
+                    </section><!-- /#content -->
+                <section id="extras" class="body">
+                                <div class="blogroll">
+                                        <h2>links</h2>
+                                        <ul>
+                                                        <li><a href="https://getpelican.com/">Pelican</a></li>
+                                                        <li><a href="https://www.python.org/">Python.org</a></li>
+                                                        <li><a href="https://palletsprojects.com/p/jinja/">Jinja2</a></li>
+                                                        <li><a href="#">You can modify those links in your config file</a></li>
+                                        </ul>
+                                </div><!-- /.blogroll -->
+                                <div class="social">
+                                        <h2>social</h2>
+                                        <ul>
+                                                        <li><a href="/feeds/all.atom.xml" type="application/atom+xml" rel="alternate">atom feed</a></li>
+
+                                                        <li><a href="https://github.com/SAhmadrezaAnaami">My Github Page</a></li>
+                                                        <li><a href="https://huggingface.co/ahmadreza123">My Hugging Face Page</a></li>
+                                        </ul>
+                                </div><!-- /.social -->
+                </section><!-- /#extras -->
+
+                <footer id="contentinfo" class="body">
+                        <address id="about" class="vcard body">
+                                Proudly powered by <a rel="nofollow" href="https://getpelican.com/">Pelican</a>, which takes great advantage of <a rel="nofollow" href="https://www.python.org/">Python</a>.
+                        </address><!-- /#about -->
+
+                        <p>The theme is by <a rel="nofollow" href="https://www.smashingmagazine.com/2009/08/designing-a-html-5-layout-from-scratch/">Smashing Magazine</a>, thanks!</p>
+                </footer><!-- /#contentinfo -->
+
+        </body>
+</html>
